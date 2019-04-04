@@ -6,7 +6,7 @@
 // Created by Administrator on 2019/3/26.
 //
 #include <android/log.h>
-#include "cn_onestravel_ndk_ffmpegdecodedemo_VideoUtils.h"
+#include "cn_onestravel_ndk_ffmpeg_VideoUtils.h"
 //编码
 #include "include/libavcodec/avcodec.h"
 //封装格式处理
@@ -93,7 +93,7 @@ JNIEXPORT void JNICALL Java_cn_onestravel_ndk_ffmpeg_VideoUtils_decode
 
   	//输出视频信息
   	LOGI("视频的文件格式：%s",pFormatCtx->iformat->name);
-  	LOGI("视频时长：%ld", (pFormatCtx->duration)/1000000);
+  	LOGI("视频时长：%lld", (pFormatCtx->duration)/1000000);
   	LOGI("视频的宽高：%d,%d",pCodecCtx->width,pCodecCtx->height);
   	LOGI("解码器的名称：%s",pCodec->name);
 

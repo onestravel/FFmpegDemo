@@ -1,10 +1,10 @@
 cmake_minimum_required(VERSION 3.4.1)
 set(DISTRIBUTION_DIR ${CMAKE_SOURCE_DIR}/../jniLibs/)
-
+include_directories(${CMAKE_SOURCE_DIR}/include)
 add_library( # Sets the name of the library.
         ffmpeg-video
         SHARED
-        ffmpeg_video.c)
+        ffmpeg_video.c ffmpeg_player.c)
 
 
 # 编解码(最重要的库)
@@ -119,6 +119,19 @@ set_target_properties(
 )
 
 
+#libyuv yuv 转RGBA格式的库
+add_library(
+        lib-yuv
+        SHARED
+        IMPORTED
+)
+#libyuv yuv 转RGBA格式的库位置
+set_target_properties(
+        lib-yuv
+        PROPERTIES IMPORTED_LOCATION
+        ${DISTRIBUTION_DIR}/${ANDROID_ABI}/libyuv_shared.so
+)
+
 find_library(
         android-lib
         android
@@ -145,6 +158,7 @@ target_link_libraries(
         postproc
         swresample
         swscale
+        lib-yuv
         ${android-lib}
         ${jnigraphics-lib}
         ${log-lib}

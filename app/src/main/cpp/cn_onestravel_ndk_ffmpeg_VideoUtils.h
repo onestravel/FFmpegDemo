@@ -15,6 +15,7 @@ extern "C" {
 JNIEXPORT void JNICALL Java_cn_onestravel_ndk_ffmpeg_VideoUtils_decode
   (JNIEnv *, jclass, jstring, jstring);
 
+
 #ifdef __cplusplus
 }
 #endif

@@ -1,5 +1,6 @@
 package cn.onestravel.ndk.ffmpeg;
 
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
@@ -7,8 +8,11 @@ import android.os.Environment;
 import android.support.annotation.NonNull;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
+import android.view.Surface;
 import android.view.View;
 import android.widget.Toast;
+
+import cn.onestravel.ndk.ffmpeg.render.PlayActivity;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -23,6 +27,7 @@ public class MainActivity extends AppCompatActivity {
         requestPermission();
         videoThread = new VideoThread();
     }
+
 
     /**
      * 获取权限
@@ -73,6 +78,11 @@ public class MainActivity extends AppCompatActivity {
     protected void onDestroy() {
         videoThread = null;
         super.onDestroy();
+    }
+
+    public void render(View view) {
+        Intent intent = new Intent(this, PlayActivity.class);
+        startActivity(intent);
     }
 
     public static class VideoThread extends Thread {
