@@ -233,7 +233,13 @@ void init_codec_context(struct Player *player, int stream_index) {
  */
 void decode_video_prepare(JNIEnv *env, jobject surface, struct Player *player) {
     player->nativeWindow = ANativeWindow_fromSurface(env, surface);//准备读取
-
+    AVCodecContext *avCodecContext = player->input_av_codec_ctx[player->video_stream_index];
+    struct SwsContext *swxCtx = sws_getContext(avCodecContext->width, avCodecContext->height,
+                                               AV_PIX_FMT_YUV420P, avCodecContext->height,
+                                               avCodecContext->width, AV_PIX_FMT_YUV420P,
+                                               SWS_BICUBLIN, NULL, NULL, NULL);
+    player->swsContext = swxCtx;
+    LOGI("视频播放准备完成")
 }
 
 /**
@@ -302,8 +308,9 @@ void jni_audio_prepare(JNIEnv *env, jobject jthiz, struct Player *player) {
  * @param player
  */
 void decode_video(struct Player *player, AVPacket *packet) {
-    LOGI("解码开始");
+    LOGI("视频解码开始");
     AVFrame *yuv_frame = av_frame_alloc();
+    AVFrame *start_frame = av_frame_alloc();
     AVFrame *rgba_frame = av_frame_alloc();
     AVCodecContext *codec_ctx = player->input_av_codec_ctx[player->video_stream_index];
 
@@ -311,16 +318,14 @@ void decode_video(struct Player *player, AVPacket *packet) {
     ANativeWindow_Buffer windowBuffer;
     int len, got_frame;
     len = avcodec_decode_video2(codec_ctx, yuv_frame, &got_frame, packet);
-    if (len < 0) {
-        av_frame_free(&yuv_frame);
-        av_frame_free(&rgba_frame);
-        LOGI("解码len<0");
-        return;
-    }
     //不为0,正在解码
     if (got_frame) {
         ANativeWindow_setBuffersGeometry(player->nativeWindow, codec_ctx->width,
                                          codec_ctx->height, WINDOW_FORMAT_RGBA_8888);
+                LOGI("视频帧缩放");
+        sws_scale(player->swsContext, yuv_frame->data, yuv_frame->linesize, 0,
+                  codec_ctx->height, start_frame->data, start_frame->linesize);
+        LOGI("视频帧缩放结束");
         //LOCK
         ANativeWindow_lock(player->nativeWindow, &windowBuffer, NULL);
 
@@ -342,6 +347,7 @@ void decode_video(struct Player *player, AVPacket *packet) {
         usleep(16 * 1000);
     }
     av_frame_free(&yuv_frame);
+    av_frame_free(&start_frame);
     av_frame_free(&rgba_frame);
 }
 
@@ -381,7 +387,7 @@ void decode_audio(struct Player *player, AVPacket *packet) {
             jbyteArray audio_sample_array = (*env)->NewByteArray(env, out_buffer_size);
             jbyte *sample_byte_p = (*env)->GetByteArrayElements(env, audio_sample_array, NULL);
             //out_buffer 的数据复制到sample_byte_p
-            LOGI("音频解码 memcpy");
+            LOGI("音频解码 memcpy out_buffer_size=%d",out_buffer_size);
             memcpy(sample_byte_p, out_buffer, out_buffer_size);
             //同步
             //AudioTrack.write PCM数据
@@ -389,8 +395,11 @@ void decode_audio(struct Player *player, AVPacket *packet) {
                                   audio_sample_array, 0, out_buffer_size);
             LOGI("音频解NewByteArray码 释放资源");
             (*env)->ReleaseByteArrayElements(env, audio_sample_array, sample_byte_p, 0);
+            LOGI("音频解 ReleaseByteArrayElements");
             (*env)->DeleteLocalRef(env, audio_sample_array);
+            LOGI("音频解 DeleteLocalRef");
             (*javaVM)->DetachCurrentThread(javaVM);
+            LOGI("音频解 DetachCurrentThread");
             usleep(1000 * 16);
         }
     }
