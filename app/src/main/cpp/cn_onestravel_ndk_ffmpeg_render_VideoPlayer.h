@@ -14,7 +14,7 @@ extern "C" {
  * Signature: (Ljava/lang/String;Landroid/view/Surface;)V
  */
 JNIEXPORT void JNICALL Java_cn_onestravel_ndk_ffmpeg_render_VideoPlayer_render
-  (JNIEnv *, jclass, jstring, jobject);
+  (JNIEnv *, jclass , jstring, jobject);
 
 /*
  * Class:     cn_onestravel_ndk_ffmpeg_render_VideoPlayer
@@ -22,7 +22,7 @@ JNIEXPORT void JNICALL Java_cn_onestravel_ndk_ffmpeg_render_VideoPlayer_render
  * Signature: (Ljava/lang/String;Landroid/view/Surface;)V
  */
 JNIEXPORT void JNICALL Java_cn_onestravel_ndk_ffmpeg_render_VideoPlayer_sound
-        (JNIEnv *, jclass, jstring, jobject);
+        (JNIEnv *, jobject , jstring, jobject);
 
 /*
  * Class:     cn_onestravel_ndk_ffmpeg_render_VideoPlayer
@@ -30,7 +30,14 @@ JNIEXPORT void JNICALL Java_cn_onestravel_ndk_ffmpeg_render_VideoPlayer_sound
  * Signature: (Ljava/lang/String;Landroid/view/Surface;)V
  */
 JNIEXPORT void JNICALL Java_cn_onestravel_ndk_ffmpeg_render_VideoPlayer_play
-        (JNIEnv *, jclass, jstring, jobject);
+        (JNIEnv *, jobject , jstring, jobject);
+
+
+
+//JNIEXPORT void JNICALL
+//Java_cn_onestravel_ndk_ffmpeg_render_VideoPlayer_destroy(JNIEnv* , jobject ,
+//                                                         jstring , jobject);
+
 #ifdef __cplusplus
 }
 #endif

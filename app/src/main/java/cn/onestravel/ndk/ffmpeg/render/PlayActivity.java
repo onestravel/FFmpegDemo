@@ -15,6 +15,7 @@ public class PlayActivity extends AppCompatActivity {
 
     private Thread playThread;
     private VideoView videoView;
+    private VideoPlayer videoPlayer;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -22,6 +23,7 @@ public class PlayActivity extends AppCompatActivity {
         setContentView(R.layout.activity_play);
         videoView = findViewById(R.id.videoView);
         playThread = new PlayThread(videoView.getHolder().getSurface());
+        videoPlayer = new VideoPlayer();
     }
     
 
@@ -34,7 +36,7 @@ public class PlayActivity extends AppCompatActivity {
 //                playThread.start();
 //            }
             String input = Environment.getExternalStorageDirectory().getAbsolutePath() + "/input.mp4";
-            VideoPlayer.play(input,videoView.getHolder().getSurface());
+            videoPlayer.play(input,videoView.getHolder().getSurface());
         }catch (Exception e){
             e.printStackTrace();
         }
@@ -50,7 +52,7 @@ public class PlayActivity extends AppCompatActivity {
         public void run() {
             super.run();
             String input = Environment.getExternalStorageDirectory().getAbsolutePath() + "/input.mp4";
-            VideoPlayer.play(input,surface);
+            VideoPlayer.render(input,surface);
         }
     }
 }

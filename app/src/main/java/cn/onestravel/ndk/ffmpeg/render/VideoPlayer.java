@@ -1,5 +1,10 @@
 package cn.onestravel.ndk.ffmpeg.render;
 
+import android.media.AudioAttributes;
+import android.media.AudioFormat;
+import android.media.AudioManager;
+import android.media.AudioTrack;
+import android.util.Log;
 import android.view.Surface;
 
 /**
@@ -26,7 +31,58 @@ public class VideoPlayer {
 
     public native static void render(String input, Surface surface);
 
-    public native static void sound(String input, Surface surface);
+    public native void sound(String input, Surface surface);
 
-    public native static void play(String input, Surface surface);
+    public native void play(String input, Surface surface);
+
+//    public native void destroy(String input, Surface surface);
+
+    /**
+     * 创建一个AudioTrac对象，用于播放
+     * @param nb_channels
+     * @return
+     */
+    public AudioTrack createAudioTrack(int sampleRateInHz, int nb_channels){
+        //固定格式的音频码流
+        int audioFormat = AudioFormat.ENCODING_PCM_16BIT;
+        Log.i("onestravel", "nb_channels:"+nb_channels);
+        //声道布局
+        int channelConfig;
+        if(nb_channels == 1){
+            channelConfig = android.media.AudioFormat.CHANNEL_OUT_MONO;
+        }else if(nb_channels == 2){
+            channelConfig = android.media.AudioFormat.CHANNEL_OUT_STEREO;
+        }else{
+            channelConfig = android.media.AudioFormat.CHANNEL_OUT_STEREO;
+        }
+
+        int bufferSizeInBytes = AudioTrack.getMinBufferSize(sampleRateInHz, channelConfig, audioFormat);
+        AudioTrack audioTrack;
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            AudioTrack.Builder builder = new AudioTrack.Builder();
+            builder.setAudioAttributes(new AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ALARM)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .build())
+                    .setAudioFormat(new AudioFormat.Builder()
+                            .setEncoding(audioFormat)
+                            .setSampleRate(sampleRateInHz)
+                            .setChannelMask(channelConfig)
+                            .build())
+                    .setBufferSizeInBytes(bufferSizeInBytes);
+            audioTrack = builder.build();
+        }else {
+            audioTrack = new AudioTrack(
+                    AudioManager.STREAM_MUSIC,
+                    sampleRateInHz, channelConfig,
+                    audioFormat,
+                    bufferSizeInBytes, AudioTrack.MODE_STREAM);
+        }
+        //播放
+        //audioTrack.play();
+        //写入PCM
+        //audioTrack.write(audioData, offsetInBytes, sizeInBytes);
+        return audioTrack;
+    }
+
 }
