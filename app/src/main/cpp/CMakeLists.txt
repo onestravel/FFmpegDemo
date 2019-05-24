@@ -4,7 +4,7 @@ include_directories(${CMAKE_SOURCE_DIR}/include)
 add_library( # Sets the name of the library.
         ffmpeg-video
         SHARED
-        ffmpeg_video.c ffmpeg_player.c)
+        ffmpeg_video.c ffmpeg_player.c frame_rotate.c quene.c)
 
 
 # 编解码(最重要的库)
