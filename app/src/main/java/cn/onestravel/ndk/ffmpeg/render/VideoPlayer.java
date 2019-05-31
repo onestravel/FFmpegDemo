@@ -15,6 +15,7 @@ import android.view.Surface;
  * @createTime 2019/3/28 15:43
  */
 public class VideoPlayer {
+    private PlayListener playListener;
 
     static {
         System.loadLibrary("avutil-54");
@@ -35,6 +36,15 @@ public class VideoPlayer {
 
     public native void play(String input, Surface surface);
 
+    public void setPlayListener(PlayListener playListener) {
+        this.playListener = playListener;
+    }
+
+    public void ready(int width, int height){
+        if(playListener!=null){
+            playListener.ready(width,height);
+        }
+    }
 //    public native void destroy(String input, Surface surface);
 
     /**
@@ -63,6 +73,7 @@ public class VideoPlayer {
             builder.setAudioAttributes(new AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_ALARM)
                     .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .setLegacyStreamType(AudioManager.STREAM_MUSIC)
                     .build())
                     .setAudioFormat(new AudioFormat.Builder()
                             .setEncoding(audioFormat)
@@ -85,4 +96,8 @@ public class VideoPlayer {
         return audioTrack;
     }
 
+
+    interface PlayListener{
+        void ready(int width,int height);
+    }
 }

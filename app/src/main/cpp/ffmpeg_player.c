@@ -17,6 +17,7 @@
 #include <libyuv.h>
 #include <pthread.h>
 #include <libswresample/swresample.h>
+#include <libavutil/time.h>
 //队列
 #include "quene.h"
 
@@ -134,6 +135,9 @@ JNIEXPORT void JNICALL Java_cn_onestravel_ndk_ffmpeg_render_VideoPlayer_render
 
 }
 
+#define MIN_SLEEP_TIME_US 1000ll
+#define AUDIO_TIME_ADJUST_US -200000ll
+
 //nb_streams,视频文件中可能存在音频流，视频流，字幕
 #define MAX_AV_STREAM 2
 #define PACKET_QUEUE_SIZE 50
@@ -177,6 +181,11 @@ struct _Player {
     pthread_mutex_t mutex;
     //条件变量
     pthread_cond_t cond;
+
+    //视频开始播放的时间
+    int64_t start_time;
+
+    int64_t audio_clock;
 };
 
 
@@ -272,6 +281,77 @@ void init_codec_context(Player *player, int stream_index) {
 void decode_video_prepare(JNIEnv *env, jobject surface, Player *player) {
     player->nativeWindow = ANativeWindow_fromSurface(env, surface);//准备读取
 
+
+
+}
+
+/**
+ * JNI 视频相关初始化
+ * @param env  JNIEnv
+ * @param player
+ */
+void jni_video_prepare(JNIEnv *env, jobject jthiz, Player *player) {
+//    jclass player_class = (*env)->GetObjectClass(env, jthiz);
+//
+//    jmethodID ready_mid = (*env)->GetMethodID(env, player_class, "ready",
+//                                                           "(II)V");
+//    AVCodecContext *avCodecContext = player->input_av_codec_ctx[player->video_stream_index];
+//    LOGI("ready width= %d ,height = %d",avCodecContext->width, avCodecContext->height);
+//     (*env)->CallObjectMethod(env, jthiz, ready_mid,
+//                              avCodecContext->width, avCodecContext->height);
+
+}
+
+/**
+ * 获取视频当前播放时间
+ */
+int64_t player_get_current_video_time(Player *player) {
+    int64_t current_time = av_gettime();
+    return current_time - player->start_time;
+}
+
+/**
+ * 延迟
+ */
+void player_wait_for_frame(Player *player, int64_t stream_time,
+                           int stream_no) {
+    pthread_mutex_lock(&player->mutex);
+    for (;;) {
+        int64_t current_video_time = player_get_current_video_time(player);
+        int64_t sleep_time = stream_time - current_video_time;
+        LOGI("sleep_time=%d", sleep_time);
+        if (sleep_time < -300000ll) {
+            // 300 ms late
+            int64_t new_value = player->start_time - sleep_time;
+            LOGI("player_wait_for_frame[%d] correcting %f to %f because late",
+                 stream_no, (av_gettime() - player->start_time) / 1000000.0,
+                 (av_gettime() - new_value) / 1000000.0);
+
+            player->start_time = new_value;
+            pthread_cond_broadcast(&player->cond);
+        }
+
+        if (sleep_time <= MIN_SLEEP_TIME_US) {
+            // We do not need to wait if time is slower then minimal sleep time
+            LOGI("sleep_time<= MIN_SLEEP_TIME_US");
+            break;
+        }
+
+        if (sleep_time > 500000ll) {
+            // if sleep time is bigger the
+            // n 500ms just sleep this 500ms
+            // and check everything again
+            LOGI("sleep_time> 500000ll");
+            sleep_time = 500000ll;
+        }
+        //等待指定时长
+        int timeout_ret = pthread_cond_timeout_np(&player->cond,
+                                                  &player->mutex, sleep_time / 1000ll);
+        LOGI("sleep_time / 1000ll = %f , timeout_ret = %d", sleep_time / 1000ll, timeout_ret);
+        // just go further
+        LOGI("player_wait_for_frame[%d] finish", stream_no);
+    }
+    pthread_mutex_unlock(&player->mutex);
 }
 
 /**
@@ -296,10 +376,11 @@ void decode_audio_prepare(JNIEnv *env, Player *player) {
     //输出的声道布局（立体声）
     uint64_t out_ch_layout = AV_CH_LAYOUT_STEREO;
     player->swrCtx = swr_alloc();
-    swr_alloc_set_opts(player->swrCtx, out_ch_layout, player->out_sample_fmt,
-                       player->out_sample_rate,
+    swr_alloc_set_opts(player->swrCtx,
+                       out_ch_layout, player->out_sample_fmt, player->out_sample_rate,
                        in_ch_layout, player->in_sample_fmt, player->in_sample_rate,
                        0, NULL);
+
     swr_init(player->swrCtx);
     //输出声道个数
     player->out_channel_nb = av_get_channel_layout_nb_channels(out_ch_layout);
@@ -313,11 +394,12 @@ void decode_audio_prepare(JNIEnv *env, Player *player) {
 void jni_audio_prepare(JNIEnv *env, jobject jthiz, Player *player) {
     jclass player_class = (*env)->GetObjectClass(env, jthiz);
 
-    //AudioTrack对象
+    //AudioTrack对象，通过调用java方法获取AudioTrack对象
     jmethodID create_audio_track_mid = (*env)->GetMethodID(env, player_class, "createAudioTrack",
                                                            "(II)Landroid/media/AudioTrack;");
     jobject audio_track = (*env)->CallObjectMethod(env, jthiz, create_audio_track_mid,
                                                    player->out_sample_rate, player->out_channel_nb);
+
     //调用AudioTrack.play方法
     jclass audio_track_class = (*env)->GetObjectClass(env, audio_track);
     jmethodID audio_track_play_mid = (*env)->GetMethodID(env, audio_track_class, "play", "()V");
@@ -340,6 +422,7 @@ void jni_audio_prepare(JNIEnv *env, jobject jthiz, Player *player) {
  */
 void decode_video(Player *player, AVPacket *packet) {
     LOGI("视频解码开始");
+    AVStream *stream = player->input_av_format_ctx->streams[player->video_stream_index];
     //初始化视频帧，需要使用yuv视频帧和rgba视频帧
     AVFrame *yuv_frame = av_frame_alloc();
     AVFrame *rgba_frame = av_frame_alloc();
@@ -373,10 +456,19 @@ void decode_video(Player *player, AVPacket *packet) {
                 rgba_frame->data[0], rgba_frame->linesize[0],
                 codec_ctx->width, codec_ctx->height);
 
+        //计算延迟
+        int64_t pts = av_frame_get_best_effort_timestamp(yuv_frame);
+        //转换（不同时间基时间转换）
+        int64_t time = av_rescale_q(pts, stream->time_base, AV_TIME_BASE_Q);
+
+        player_wait_for_frame(player, time, player->video_stream_index);
+
+
         //UNLOCK
         ANativeWindow_unlockAndPost(player->nativeWindow);
 //            ANativeWindow_release(nativeWindow);
-        usleep(16 * 1000);
+        //延迟时间，时间太长会导致声音出现卡顿
+        usleep(1 * 1000);
     }
     av_frame_free(&yuv_frame);
     av_frame_free(&rgba_frame);
@@ -394,11 +486,14 @@ void decode_video(Player *player, AVPacket *packet) {
 void decode_audio(Player *player, AVPacket *packet) {
     LOGI("音频解码开始");
     AVCodecContext *codecCtx = player->input_av_codec_ctx[player->audio_stream_index];
+    AVFormatContext *input_format_ctx = player->input_av_format_ctx;
+    AVStream *stream = input_format_ctx->streams[player->audio_stream_index];
     SwrContext *swrCtx = player->swrCtx;
     AVFrame *frame = av_frame_alloc();
     int got_frame;
     //codecCtx=0xab9de050,frame=0xabe25ba0,got_frame=0xe0e1889c,packet=0xe0f178b8
-    LOGI("音频解码 codecCtx=%#x,frame=%#x,got_frame=%#x,packet=%#x", codecCtx,frame,&got_frame,packet);
+    LOGI("音频解码 codecCtx=%#x,frame=%#x,got_frame=%#x,packet=%#x", codecCtx, frame, &got_frame,
+         packet);
     avcodec_decode_audio4(codecCtx, frame, &got_frame, packet);
     //16Bit 44100 PCM 数据（重采样缓冲区）
     uint8_t *out_buffer = (uint8_t *) av_malloc(MAX_AUDIO_FRME_SIZE);
@@ -411,35 +506,46 @@ void decode_audio(Player *player, AVPacket *packet) {
         int out_buffer_size = av_samples_get_buffer_size(NULL, player->out_channel_nb,
                                                          frame->nb_samples, player->out_sample_fmt,
                                                          1);
+
+        int64_t pts = packet->pts;
+        if (pts != AV_NOPTS_VALUE) {
+            player->audio_clock = av_rescale_q(pts, stream->time_base, AV_TIME_BASE_Q);
+            //				av_q2d(stream->time_base) * pts;
+            LOGI("player_write_audio - read from pts");
+            player_wait_for_frame(player,
+                                  player->audio_clock + AUDIO_TIME_ADJUST_US,
+                                  player->audio_stream_index);
+        }
 //        fwrite(out_buffer,1,out_buffer_size,fp_pcm);
         LOGI("音频解码%d,sample的size=%d", got_frame, out_buffer_size);
-        if (out_buffer_size > 0) {
-            //关联当前线程 JNIEnv
-            LOGI("音频解码,关联当前线程 JNIEnv");
-            JavaVM *javaVM = player->javaVM;
-            JNIEnv *env;
-            (*javaVM)->AttachCurrentThread(javaVM, &env, NULL);
-            //out_buffer缓冲区数据，转成byte数组
-            LOGI("音频解码,out_buffer缓冲区数据，转成byte数组");
-            jbyteArray audio_sample_array = (*env)->NewByteArray(env, out_buffer_size);
-            jbyte *sample_byte_p = (*env)->GetByteArrayElements(env, audio_sample_array, NULL);
-            //out_buffer 的数据复制到sample_byte_p
-            LOGI("音频解码 memcpy out_buffer_size=%d", out_buffer_size);
-            memcpy(sample_byte_p, out_buffer, out_buffer_size);
-            //同步
-            //AudioTrack.write PCM数据
-            (*env)->CallIntMethod(env, player->audio_track, player->audio_track_write_mid,
-                                  audio_sample_array, 0, out_buffer_size);
-            usleep(1000 * 16);
-            LOGI("音频解NewByteArray码 释放资源");
-            (*env)->ReleaseByteArrayElements(env, audio_sample_array, sample_byte_p, 0);
-            LOGI("音频解 ReleaseByteArrayElements");
-            (*env)->DeleteLocalRef(env, audio_sample_array);
-            LOGI("音频解 DeleteLocalRef");
-            (*javaVM)->DetachCurrentThread(javaVM);
-            LOGI("音频解 DetachCurrentThread");
+//        if (out_buffer_size > 0) {
+        //关联当前线程 JNIEnv
+        LOGI("音频解码,关联当前线程 JNIEnv");
+        JavaVM *javaVM = player->javaVM;
+        JNIEnv *env;
+        (*javaVM)->AttachCurrentThread(javaVM, &env, NULL);
+        //out_buffer缓冲区数据，转成byte数组
+        LOGI("音频解码,out_buffer缓冲区数据，转成byte数组");
+        jbyteArray audio_sample_array = (*env)->NewByteArray(env, out_buffer_size);
+        jbyte *sample_byte_p = (*env)->GetByteArrayElements(env, audio_sample_array, NULL);
+        //out_buffer 的数据复制到sample_byte_p
+        LOGI("音频解码 memcpy out_buffer_size=%d", out_buffer_size);
+        memcpy(sample_byte_p, out_buffer, out_buffer_size);
+        //同步
+        LOGI("音频解NewByteArray码 释放资源");
+        (*env)->ReleaseByteArrayElements(env, audio_sample_array, sample_byte_p, 0);
+        //AudioTrack.write PCM数据
+        (*env)->CallIntMethod(env, player->audio_track, player->audio_track_write_mid,
+                              audio_sample_array, 0, out_buffer_size);
 
-        }
+
+        LOGI("音频解 ReleaseByteArrayElements");
+        (*env)->DeleteLocalRef(env, audio_sample_array);
+        LOGI("音频解 DeleteLocalRef");
+        (*javaVM)->DetachCurrentThread(javaVM);
+        LOGI("音频解 DetachCurrentThread");
+        usleep(1000 * 16);
+//        }
     }
     av_frame_free(&frame);
 }
@@ -463,7 +569,7 @@ void *decode_data_thr_fun(void *arg) {
     for (;;) {
         pthread_mutex_lock(&player->mutex);
         //消费队列中的 AVPacket
-        AVPacket *packet = (AVPacket *)queue_dequeue(queue,&player->mutex,&player->cond);
+        AVPacket *packet = (AVPacket *) queue_dequeue(queue, &player->mutex, &player->cond);
         pthread_mutex_unlock(&player->mutex);
         //判断是视频流还是音频流
         if (stream_index == player->video_stream_index) {
@@ -482,7 +588,7 @@ void *decode_data_thr_fun(void *arg) {
 }
 
 
-void* player_fill_packet(){
+void *player_fill_packet() {
     AVPacket *packet = (AVPacket *) av_malloc(sizeof(AVPacket));
     return packet;
 }
@@ -493,7 +599,7 @@ void* player_fill_packet(){
 void player_alloc_queues(Player *player) {
     int i;
     for (i = 0; i < player->capture_stream_no; ++i) {
-        Queue *queue = queue_init(PACKET_QUEUE_SIZE,player_fill_packet);
+        Queue *queue = queue_init(PACKET_QUEUE_SIZE, player_fill_packet);
         player->packets[i] = queue;
     }
 }
@@ -518,7 +624,7 @@ void *player_read_from_stream(void *arg) {
         Queue *queue = player->packets[pkt->stream_index];
         pthread_mutex_lock(&player->mutex);
         //AVPacket 进队列
-        AVPacket *packet_data = queue_enqueue(queue,&player->mutex,&player->cond);
+        AVPacket *packet_data = queue_enqueue(queue, &player->mutex, &player->cond);
         pthread_mutex_unlock(&player->mutex);
         *packet_data = packet;
     }
@@ -547,15 +653,18 @@ void JNICALL Java_cn_onestravel_ndk_ffmpeg_render_VideoPlayer_play
     decode_audio_prepare(env, player);
     //JNI调用Android方法准备
     jni_audio_prepare(env, jobj, player);
+    jni_video_prepare(env,jobj,player);
     player_alloc_queues(player);
     //初始化互斥锁
-    pthread_mutex_init(&player->mutex,NULL);
+    pthread_mutex_init(&player->mutex, NULL);
     //初始化条件变量
-    pthread_cond_init(&player->cond,NULL);
+    pthread_cond_init(&player->cond, NULL);
+
     //生产者线程
     pthread_create(&(player->thread_player_read_from_stream), NULL, player_read_from_stream,
                    player);
-
+    sleep(1);
+    player->start_time = 0;
     DecodeData data1 = {player, video_stream_index}, *video_decode_data = &data1;
     //创建子线程解码视频
     pthread_create(&(player->decode_threads[video_stream_index]), NULL, decode_data_thr_fun,
