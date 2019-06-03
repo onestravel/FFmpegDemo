@@ -38,6 +38,7 @@ JNIEXPORT void JNICALL Java_cn_onestravel_ndk_ffmpeg_render_VideoPlayer_play
 //Java_cn_onestravel_ndk_ffmpeg_render_VideoPlayer_destroy(JNIEnv* , jobject ,
 //                                                         jstring , jobject);
 
+
 #ifdef __cplusplus
 }
 #endif

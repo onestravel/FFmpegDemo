@@ -1,12 +1,14 @@
 package cn.onestravel.ndk.ffmpeg.render;
 
 import android.content.Context;
+import android.content.pm.ActivityInfo;
 import android.graphics.PixelFormat;
 import android.util.AttributeSet;
 import android.util.DisplayMetrics;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.ViewGroup;
+import android.widget.FrameLayout;
 import android.widget.RelativeLayout;
 
 /**
@@ -30,7 +32,6 @@ public class VideoView extends SurfaceView {
     private int mCurrentPos;
     private boolean isLand;
 
-    private DisplayMetrics displayMetrics;
     private int mediaWidth;
     private int mediaHeight;
 
@@ -54,11 +55,14 @@ public class VideoView extends SurfaceView {
         //初始化SurfaceView的像素格式
         SurfaceHolder holder = getHolder();
         holder.setFormat(PixelFormat.RGBA_8888);
+        holder.setKeepScreenOn(true);
+        holder.setFixedSize(960,450);
         DisplayMetrics dm = new DisplayMetrics();
         dm = getContext().getResources().getDisplayMetrics();
         mScreenWidth = dm.widthPixels;
         mScreenHeight = dm.heightPixels;
-
+        this.mediaWidth = mScreenWidth;
+        this.mediaHeight = mScreenHeight;
 
     }
 
@@ -66,37 +70,27 @@ public class VideoView extends SurfaceView {
     public void resetSize(int mediaWidth,int mediaHeight) {
         this.mediaWidth = mediaWidth;
         this.mediaHeight = mediaHeight;
-        requestLayout();
+        int videoWidth = mediaWidth;
+        int videoHeight = mediaHeight;
+
+        //根据视频尺寸去计算->视频可以在sufaceView中放大的最大倍数。
+        float max;
+        if (getResources().getConfiguration().orientation== ActivityInfo.SCREEN_ORIENTATION_PORTRAIT) {
+            //竖屏模式下按视频宽度计算放大倍数值
+            max = Math.max((float) videoWidth / (float) mScreenWidth,(float) videoHeight / (float) mediaHeight);
+        } else{
+            //横屏模式下按视频高度计算放大倍数值
+            max = Math.max(((float) videoWidth/(float) mediaHeight),(float) videoHeight/(float) mScreenWidth);
+        }
+
+        //视频宽高分别/最大倍数值 计算出放大后的视频尺寸
+        videoWidth = (int) Math.ceil((float) videoWidth / max);
+        videoHeight = (int) Math.ceil((float) videoHeight / max);
+
+        //无法直接设置视频尺寸，将计算出的视频尺寸设置到surfaceView 让视频自动填充。
+//        setLayoutParams(new FrameLayout.LayoutParams(videoWidth, videoHeight));
+        getHolder().setFixedSize(videoWidth,videoHeight);
     }
 
-    @Override
-    protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-        float areaWH = 0.0f;
-        int svWidth = 0;
-        int svHeight = 0;
-        int height;
-        if (!isLand) {
-            // 竖屏16:9
-            height = (int) (mScreenWidth / SHOW_SCALE);
-            areaWH = SHOW_SCALE;
-        } else {
-            //横屏按照手机屏幕宽高计算比例
-            height = mScreenHeight;
-            areaWH = mScreenWidth / mScreenHeight;
-        }
-        float mediaWH = mediaWidth * 1.0f / mediaHeight;
-        if (areaWH > mediaWH) {
-            //直接放会矮胖
-             svWidth = (int) (height * mediaWH);
-        }
-        if (areaWH < mediaWH) {
-            //直接放会瘦高。
-             svHeight = (int) (mScreenWidth / mediaWH);
-        }
-        int widthModel = MeasureSpec.getMode(widthMeasureSpec);
-        int heightModel = MeasureSpec.getMode(heightMeasureSpec);
-        widthMeasureSpec = MeasureSpec.makeMeasureSpec(svWidth,widthModel);
-        heightMeasureSpec = MeasureSpec.makeMeasureSpec(svHeight,heightModel);
-        super.onMeasure(widthMeasureSpec, heightMeasureSpec);
-    }
+
 }

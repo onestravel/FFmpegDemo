@@ -32,9 +32,9 @@ public class VideoPlayer {
 
     public native static void render(String input, Surface surface);
 
-    public native void sound(String input, Surface surface);
+//    public native void prepare(String input);
 
-    public native void play(String input, Surface surface);
+    public native void play(String input,Surface surface);
 
     public void setPlayListener(PlayListener playListener) {
         this.playListener = playListener;

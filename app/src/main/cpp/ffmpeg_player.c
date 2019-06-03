@@ -280,9 +280,6 @@ void init_codec_context(Player *player, int stream_index) {
  */
 void decode_video_prepare(JNIEnv *env, jobject surface, Player *player) {
     player->nativeWindow = ANativeWindow_fromSurface(env, surface);//准备读取
-
-
-
 }
 
 /**
@@ -291,14 +288,14 @@ void decode_video_prepare(JNIEnv *env, jobject surface, Player *player) {
  * @param player
  */
 void jni_video_prepare(JNIEnv *env, jobject jthiz, Player *player) {
-//    jclass player_class = (*env)->GetObjectClass(env, jthiz);
-//
-//    jmethodID ready_mid = (*env)->GetMethodID(env, player_class, "ready",
-//                                                           "(II)V");
-//    AVCodecContext *avCodecContext = player->input_av_codec_ctx[player->video_stream_index];
-//    LOGI("ready width= %d ,height = %d",avCodecContext->width, avCodecContext->height);
-//     (*env)->CallObjectMethod(env, jthiz, ready_mid,
-//                              avCodecContext->width, avCodecContext->height);
+    jclass player_class = (*env)->GetObjectClass(env, jthiz);
+
+    jmethodID ready_mid = (*env)->GetMethodID(env, player_class, "ready",
+                                                           "(II)V");
+    AVCodecContext *avCodecContext = player->input_av_codec_ctx[player->video_stream_index];
+    LOGI("ready width= %d ,height = %d",avCodecContext->width, avCodecContext->height);
+     (*env)->CallVoidMethod(env, jthiz, ready_mid,
+                              avCodecContext->width, avCodecContext->height);
 
 }
 
@@ -468,7 +465,7 @@ void decode_video(Player *player, AVPacket *packet) {
         ANativeWindow_unlockAndPost(player->nativeWindow);
 //            ANativeWindow_release(nativeWindow);
         //延迟时间，时间太长会导致声音出现卡顿
-        usleep(1 * 1000);
+        usleep(5 * 1000);
     }
     av_frame_free(&yuv_frame);
     av_frame_free(&rgba_frame);
@@ -647,13 +644,14 @@ void JNICALL Java_cn_onestravel_ndk_ffmpeg_render_VideoPlayer_play
     init_codec_context(player, audio_stream_index);
     //初始化视频解码器上下文
     init_codec_context(player, video_stream_index);
+    jni_video_prepare(env,jobj,player);
     //视频解码准备
     decode_video_prepare(env, surface, player);
     //音频解码准备
     decode_audio_prepare(env, player);
     //JNI调用Android方法准备
     jni_audio_prepare(env, jobj, player);
-    jni_video_prepare(env,jobj,player);
+
     player_alloc_queues(player);
     //初始化互斥锁
     pthread_mutex_init(&player->mutex, NULL);

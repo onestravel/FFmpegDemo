@@ -1,12 +1,12 @@
 package cn.onestravel.ndk.ffmpeg;
 
+import android.app.Activity;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.support.annotation.NonNull;
-import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 import android.view.Surface;
 import android.view.View;
@@ -14,7 +14,7 @@ import android.widget.Toast;
 
 import cn.onestravel.ndk.ffmpeg.render.PlayActivity;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends Activity {
 
 
     private boolean permission;
